@@ -1,0 +1,8 @@
+# 평문 원고와 비밀은 절대 올리지 않는다. 배포본은 .enc 만 올린다.
+.env
+*.docx
+*_교정본*
+slides/*.json
+*.txt
+!robots.txt
+.DS_Store

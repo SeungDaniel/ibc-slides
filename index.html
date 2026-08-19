@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>40th IBC TV 슬라이드 자막 뷰어</title>
+  <!-- Google Fonts: Noto Sans KR -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&family=Nanum+Myeongjo:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+      /* 하얀색 ~ 워밍 아이보리 배경 */
+      background: radial-gradient(circle at center, #ffffff 0%, #f7f4eb 65%, #eae6d9 100%);
+      color: #111827;
+      cursor: none; /* 마우스 커서 완벽 숨김 */
+    }
+
+    /* 전체 프레임 컨테이너 */
+    .app-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 8vh 9vw;
+    }
+
+    /* 슬라이드 프레임 카드 (주변 글씨/바 100% 제거) */
+    .slide-card {
+      position: relative;
+      width: 100%;
+      /* 글자 기둥을 좁게 잡는다. 화면 끝까지 채우면 읽기 어렵고 여백이 없어 보인다. */
+      max-width: 1200px;
+      /* 높이를 화면에 못박아 둔다. 글씨는 이 안에 맞춰 줄어든다 (fitText). */
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 3rem 4rem;
+      border-radius: 24px;
+    }
+
+    /* 슬라이드 텍스트 본문 (오직 글씨에만 100% 집중)
+       font-size 는 fitText() 가 장마다 다시 정한다. 아래 값은 스크립트가 죽었을 때의 대비다. */
+    .slide-text {
+      width: 100%;
+      font-size: 3rem;
+      font-weight: 700;
+      line-height: 1.55;
+      letter-spacing: -0.025em;
+      word-break: keep-all;
+      white-space: pre-line;
+      color: #111827;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    /* 성경 인용은 뱃지도 카드도 없이 글씨체와 색으로만 구별한다.
+       고딕(발화) ↔ 명조(인용) 는 멀리서도 구별되고 화면에 군더더기를 더하지 않는다. */
+    .slide-card.type-bible .slide-text {
+      font-family: 'Nanum Myeongjo', serif;
+      font-weight: 800;
+      color: #4a3210;
+      letter-spacing: -0.01em;
+    }
+
+    /* 강연 고르는 화면. 여기서만 커서를 보여준다 — 슬라이드에 들어가면 다시 숨는다. */
+    .picker {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 6vh 6vw;
+      background: radial-gradient(circle at center, #ffffff 0%, #f7f4eb 65%, #eae6d9 100%);
+      cursor: default;
+      z-index: 10;
+    }
+
+    .picker[hidden] { display: none; }
+
+    .picker h1 {
+      font-size: clamp(1.6rem, 2.4vw, 2.6rem);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: #111827;
+    }
+
+    .picker p {
+      font-size: clamp(1rem, 1.2vw, 1.3rem);
+      color: #6b7280;
+      margin-top: -0.8rem;
+    }
+
+    .picker ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      width: 100%;
+      max-width: 720px;
+    }
+
+    .picker button {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1.5rem;
+      padding: 1.3rem 1.8rem;
+      border: 2px solid rgba(202, 138, 4, 0.35);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.85);
+      font-family: inherit;
+      font-size: clamp(1.1rem, 1.5vw, 1.6rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #111827;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .picker button:hover,
+    .picker button:focus-visible {
+      border-color: #ca8a04;
+      background: #fffdf5;
+      outline: none;
+    }
+
+    .picker button span {
+      font-size: 0.72em;
+      font-weight: 500;
+      color: #713f12;
+      white-space: nowrap;
+    }
+
+    /* 회차 머리글. 강연이 어느 회차 것인지 데이터에 group 이 있을 때만 나온다. */
+    .picker li.group {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      margin-top: 0.6rem;
+      font-size: clamp(0.85rem, 1vw, 1rem);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #92764a;
+    }
+
+    .picker li.group:first-child { margin-top: 0; }
+
+    .picker li.group::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(202, 138, 4, 0.3);
+    }
+  
+    /* 비밀번호 화면. 여기서만 커서를 보여준다. */
+    .gate {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: radial-gradient(circle at center, #ffffff 0%, #f7f4eb 65%, #eae6d9 100%);
+      cursor: default;
+    }
+    .gate[hidden] { display: none; }
+    .gate-box {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      width: min(90vw, 380px);
+      text-align: center;
+    }
+    .gate-box h1 {
+      font-size: clamp(1.6rem, 2.4vw, 2.4rem);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: #111827;
+      /* 한글은 기본 규칙이면 낱말 가운데서 갈라진다 ('성경탐구모' / '임'). */
+      word-break: keep-all;
+      line-height: 1.25;
+    }
+    .gate-box p {
+      font-size: 1rem;
+      color: #6b7280;
+      margin-top: -0.6rem;
+      min-height: 1.4em;
+    }
+    .gate-box input,
+    .gate-box button {
+      font-family: inherit;
+      font-size: 1.1rem;
+      padding: 0.9rem 1.2rem;
+      border-radius: 12px;
+      border: 2px solid rgba(202, 138, 4, 0.35);
+      background: rgba(255, 255, 255, 0.9);
+      color: #111827;
+      text-align: center;
+    }
+    .gate-box input:focus { outline: none; border-color: #ca8a04; }
+    .gate-box button {
+      font-weight: 700;
+      cursor: pointer;
+      background: #fef9c3;
+    }
+    .gate-box button:disabled { opacity: 0.5; cursor: default; }
+  </style>
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <form class="gate-box" id="gateForm">
+    <h1>44회 국내외 성경탐구모임</h1>
+    <p id="gateNote">비밀번호를 입력하세요</p>
+    <input type="password" id="gateInput" autocomplete="current-password" autofocus>
+    <button type="submit" id="gateSubmit">열기</button>
+  </form>
+</div>
+<script>
+(function () {
+  var VERIFICATION = {"ciphertext":"340561846074f1732df95ddcc626f749","salt":"46c737fc072e6b11482a133ce3e3db91","iv":"550aae20097e3c6b43a9f1fd79372428"};
+  var ITERATIONS = 100000;
+
+  var gate = document.getElementById('gate');
+  var form = document.getElementById('gateForm');
+  var input = document.getElementById('gateInput');
+  var note = document.getElementById('gateNote');
+  var submit = document.getElementById('gateSubmit');
+
+  var release;
+  var unlocked = new Promise(function (resolve) { release = resolve; });
+
+  function unhex(hex) {
+    var out = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return out;
+  }
+
+  function deriveKey(password, salt) {
+    return crypto.subtle
+      .importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey'])
+      .then(function (base) {
+        return crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt: salt, iterations: ITERATIONS, hash: 'SHA-256' },
+          base,
+          { name: 'AES-CBC', length: 256 },
+          false,
+          ['decrypt']
+        );
+      });
+  }
+
+  function decrypt(payload, password) {
+    return deriveKey(password, unhex(payload.salt)).then(function (key) {
+      return crypto.subtle.decrypt(
+        { name: 'AES-CBC', iv: unhex(payload.iv) },
+        key,
+        unhex(payload.ciphertext)
+      );
+    }).then(function (buffer) {
+      return new TextDecoder().decode(buffer);
+    });
+  }
+
+  // 비밀번호가 맞을 때까지 기다렸다가 그때 내려받아 푼다.
+  window.__loadData = function (jsonPath) {
+    var encPath = jsonPath.replace(/\.json$/, '.enc');
+    return unlocked.then(function (password) {
+      return fetch(encPath).then(function (res) {
+        if (!res.ok) throw new Error(res.status);
+        return res.json();
+      }).then(function (payload) {
+        return decrypt(payload, password).then(JSON.parse);
+      });
+    });
+  };
+
+  function attempt(password) {
+    note.textContent = '확인 중…';
+    submit.disabled = true;
+    return decrypt(VERIFICATION, password).then(function (plain) {
+      if (plain !== 'SUCCESS') throw new Error('mismatch');
+      try { sessionStorage.setItem('ibc_pw', password); } catch (e) {}
+      gate.hidden = true;
+      release(password);
+    }).catch(function () {
+      submit.disabled = false;
+      note.textContent = '비밀번호가 맞지 않습니다';
+      input.value = '';
+      input.focus();
+    });
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (input.value) attempt(input.value);
+  });
+
+  // 같은 탭에서 새로고침하면 다시 묻지 않는다.
+  var saved = null;
+  try { saved = sessionStorage.getItem('ibc_pw'); } catch (e) {}
+  if (saved) attempt(saved);
+})();
+</script>
+
+
+  <div class="app-container" id="app">
+    <!-- 슬라이드 카딩 영역 (주변 요소 100% 원천 제거: 오직 글씨와 성경 뱃지만 존재) -->
+    <div class="slide-card" id="slideCard">
+      <div class="slide-text" id="slideText">슬라이드 로딩 중...</div>
+    </div>
+  </div>
+
+  <!-- 강연 선택 화면. ?lecture=<slug> 로 들어오면 건너뛴다. -->
+  <div class="picker" id="picker" hidden>
+    <h1 id="pickerTitle">성경 탐구 모임</h1>
+    <p id="pickerNote">강연을 고르세요</p>
+    <ul id="pickerList"></ul>
+  </div>
+
+  <script>
+    (function() {
+      // 7_slides.py 가 만든 viewer/slides/ 를 읽는다.
+      // 파일 경로로 열면 fetch 가 막히므로 viewer/ 에서 python3 -m http.server 로 띄운다.
+      const DATA_DIR = 'slides';
+
+      let slides = [];
+      let currentIndex = 0;
+      let lectureTitle = '';
+
+      const slideCard = document.getElementById('slideCard');
+      const slideText = document.getElementById('slideText');
+      const picker = document.getElementById('picker');
+      const pickerList = document.getElementById('pickerList');
+      const pickerNote = document.getElementById('pickerNote');
+      const pickerTitle = document.getElementById('pickerTitle');
+      let eventName = '';
+
+      function fail(message) {
+        picker.hidden = false;
+        pickerList.innerHTML = '';
+        pickerNote.textContent = message;
+      }
+
+      // 데이터를 읽는 방법은 밖에서 갈아끼울 수 있게 둔다.
+      // 배포본은 암호를 걸어 내보내므로 build_ibc.js 가 window.__loadData 를 미리 심어둔다.
+      // (비밀번호를 받기 전까지 해소되지 않는 약속을 돌려주므로 아래 흐름이 그대로 기다린다.)
+      const loadData = window.__loadData || (path => fetch(path).then(res => {
+        if (!res.ok) throw new Error(res.status);
+        return res.json();
+      }));
+
+      // 강연 목록을 먼저 읽는다. ?lecture= 가 있으면 곧바로 그 강연을 연다.
+      loadData(`${DATA_DIR}/index.json`)
+        .then(catalog => {
+          const wanted = new URLSearchParams(location.search).get('lecture');
+          const lectures = catalog.lectures || [];
+          // 행사 이름은 7_slides.py --event 로 데이터에 담긴다. 뷰어에 박아두지 않는다.
+          eventName = catalog.event || '';
+          if (eventName) {
+            pickerTitle.textContent = eventName;
+            document.title = `${eventName} 슬라이드 자막 뷰어`;
+          }
+          if (wanted) {
+            loadLecture(wanted);
+            return;
+          }
+          if (lectures.length === 1) {
+            loadLecture(lectures[0].slug);
+            return;
+          }
+          showPicker(lectures);
+        })
+        .catch(() => fail(
+          `${DATA_DIR}/index.json 을 읽지 못했습니다. ` +
+          'pipeline/7_slides.py 를 실행하고, viewer/ 에서 python3 -m http.server 로 열어주세요.'
+        ));
+
+      function showPicker(lectures) {
+        picker.hidden = false;
+        pickerList.innerHTML = '';
+        let shownGroup = null;
+        lectures.forEach(lecture => {
+          // 여러 회차를 한 화면에 놓을 때만 머리글이 붙는다 (build_ibc.js 가 group 을 담는다).
+          if (lecture.group && lecture.group !== shownGroup) {
+            shownGroup = lecture.group;
+            pickerList.appendChild(
+              Object.assign(document.createElement('li'), {
+                className: 'group',
+                textContent: lecture.group,
+              })
+            );
+          }
+          const item = document.createElement('li');
+          const button = document.createElement('button');
+          button.type = 'button';
+          const detail = [
+            `${lecture.count}장`,
+            lecture.bible ? `인용 ${lecture.bible}장` : null,
+            lecture.duration_text || null,
+          ].filter(Boolean).join(' · ');
+          button.append(
+            document.createTextNode(lecture.title),
+            Object.assign(document.createElement('span'), { textContent: detail })
+          );
+          button.addEventListener('click', () => loadLecture(lecture.slug));
+          item.appendChild(button);
+          pickerList.appendChild(item);
+        });
+      }
+
+      function loadLecture(slug) {
+        slideText.textContent = '슬라이드 로딩 중...';
+        loadData(`${DATA_DIR}/${slug}.json`)
+          .then(document_ => {
+            slides = document_.slides || [];
+            lectureTitle = document_.title || slug;
+            if (slides.length === 0) {
+              fail(`${slug} 에 슬라이드가 없습니다.`);
+              return;
+            }
+            picker.hidden = true;
+            renderSlide(0);
+          })
+          .catch(() => fail(`${DATA_DIR}/${slug}.json 을 읽지 못했습니다.`));
+      }
+
+      // 글씨가 카드 밖으로 넘치면 잘려 버린다. 넘치지 않는 가장 큰 크기를 찾아 맞춘다.
+      // 글자 수를 줄여도 긴 장이 하나라도 있으면 잘리므로, 자르는 건 여기서 막는 게 맞다.
+      const MAX_FONT = 72;
+      const MIN_FONT = 20;
+
+      function overflows(size) {
+        slideText.style.fontSize = size + 'px';
+        return slideText.scrollHeight > available();
+      }
+
+      function available() {
+        const style = getComputedStyle(slideCard);
+        return slideCard.clientHeight
+          - parseFloat(style.paddingTop)
+          - parseFloat(style.paddingBottom);
+      }
+
+      function fitText() {
+        if (!overflows(MAX_FONT)) {
+          return;
+        }
+        // 이분 탐색. 한 장 넘길 때마다 도는 자리라 선형 탐색은 눈에 띄게 느리다.
+        let low = MIN_FONT;
+        let high = MAX_FONT;
+        while (high - low > 1) {
+          const middle = Math.floor((low + high) / 2);
+          if (overflows(middle)) {
+            high = middle;
+          } else {
+            low = middle;
+          }
+        }
+        slideText.style.fontSize = low + 'px';
+      }
+
+      // 창 크기가 바뀌면 다시 맞춘다 (TV 연결·전체화면 전환).
+      window.addEventListener('resize', () => {
+        if (slides.length > 0 && picker.hidden) fitText();
+      });
+
+      // 웹폰트가 늦게 도착하면 글자 폭이 달라진다. 도착한 뒤 한 번 더 맞춘다.
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => {
+          if (slides.length > 0 && picker.hidden) fitText();
+        });
+      }
+
+      function renderSlide(index) {
+        if (slides.length === 0) return;
+        if (index < 0) index = 0;
+        if (index >= slides.length) index = slides.length - 1;
+
+        currentIndex = index;
+        const slide = slides[currentIndex];
+
+        // 텍스트 & 스타일 업데이트
+        slideText.textContent = slide.text;
+
+        // 글씨체가 바뀌면 글자 크기도 달라지므로 fitText 보다 먼저 갈래를 정한다.
+        slideCard.className = slide.type === 'bible'
+          ? 'slide-card type-bible'
+          : 'slide-card type-lecture';
+
+        fitText();
+
+        // 화면에는 글씨만 남긴다. 현재 위치는 탭 제목으로만 알린다.
+        document.title = `${lectureTitle} — ${currentIndex + 1}/${slides.length}`;
+      }
+
+      function nextSlide() {
+        if (currentIndex < slides.length - 1) {
+          renderSlide(currentIndex + 1);
+        }
+      }
+
+      function prevSlide() {
+        if (currentIndex > 0) {
+          renderSlide(currentIndex - 1);
+        }
+      }
+
+      // 키보드 조작 (방향키, 스페이스바)
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'Space' || e.key === ' ' || e.key === 'PageDown' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          nextSlide();
+        } else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          prevSlide();
+        }
+      });
+
+      // 마우스 화면 클릭 조작 (화면 왼쪽 25% 클릭 시 이전, 그 외 클릭 시 다음)
+      document.getElementById('app').addEventListener('click', (e) => {
+        const clickX = e.clientX;
+        const screenWidth = window.innerWidth;
+        
+        if (clickX < screenWidth * 0.25) {
+          prevSlide();
+        } else {
+          nextSlide();
+        }
+      });
+
+    })();
+  </script>
+</body>
+</html>
