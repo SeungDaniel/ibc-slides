@@ -238,7 +238,7 @@
 </div>
 <script>
 (function () {
-  var VERIFICATION = {"ciphertext":"e7810cac0e9f104a16db465a0992d9ad","salt":"c7048dc0303acd6107aa27702ef7a9de","iv":"0d790d98a3f35f0d5563d37bcba67d5f"};
+  var VERIFICATION = {"ciphertext":"201c42f393299323aab698dc5a867ba0","salt":"e0e29132d6ec364a0e34508d9b72beee","iv":"cdc7be5589916b4c647ab558ea0c2817"};
   var ITERATIONS = 100000;
 
   var gate = document.getElementById('gate');
@@ -347,6 +347,7 @@
       let slides = [];
       let currentIndex = 0;
       let lectureTitle = '';
+      let timed = false;
 
       const slideCard = document.getElementById('slideCard');
       const slideText = document.getElementById('slideText');
@@ -418,6 +419,7 @@
             `${lecture.count}장`,
             lecture.bible ? `인용 ${lecture.bible}장` : null,
             lecture.duration_text || null,
+            lecture.timed ? '자동 넘김 (P)' : null,
           ].filter(Boolean).join(' · ');
           button.append(
             document.createTextNode(lecture.title),
@@ -435,6 +437,9 @@
           .then(document_ => {
             slides = document_.slides || [];
             lectureTitle = document_.title || slug;
+            // 시각은 클로바 CSV 회차에만 있다. 없으면 자동 넘김을 아예 켜지 않는다.
+            timed = Boolean(document_.timed) && slides.every(s => typeof s.t0 === 'number');
+            stopAuto();
             if (slides.length === 0) {
               fail(`${slug} 에 슬라이드가 없습니다.`);
               return;
@@ -511,19 +516,98 @@
         fitText();
 
         // 화면에는 글씨만 남긴다. 현재 위치는 탭 제목으로만 알린다.
-        document.title = `${lectureTitle} — ${currentIndex + 1}/${slides.length}`;
+        const mark = autoPlaying() ? '▶ ' : '';
+        document.title = `${mark}${lectureTitle} — ${currentIndex + 1}/${slides.length}`;
       }
 
       function nextSlide() {
         if (currentIndex < slides.length - 1) {
           renderSlide(currentIndex + 1);
+          syncAutoClock();
         }
       }
 
       function prevSlide() {
         if (currentIndex > 0) {
           renderSlide(currentIndex - 1);
+          syncAutoClock();
         }
+      }
+
+      // ── 자동 넘김 ────────────────────────────────────────────────
+      // 슬라이드마다 t0(강연 시작 후 초)이 붙어 있는 회차에서만 동작한다.
+      // 화면에는 아무것도 더 그리지 않는다 — 상태는 탭 제목으로만 알린다.
+      // 손으로 넘기면 그 장의 t0 으로 시계를 옮긴다. 그래야 이어서 재생된다.
+      const TICK_MS = 250;
+
+      let autoTimer = null;
+      let autoOriginMs = 0;   // performance.now() 기준점
+      let autoOriginSec = 0;  // 그때의 강연 시각
+
+      function autoPlaying() {
+        return autoTimer !== null;
+      }
+
+      function lectureSeconds() {
+        return autoOriginSec + (performance.now() - autoOriginMs) / 1000;
+      }
+
+      function indexAt(seconds) {
+        // t0 이 seconds 보다 작거나 같은 마지막 장. 이분 탐색.
+        let low = 0;
+        let high = slides.length - 1;
+        let found = 0;
+        while (low <= high) {
+          const middle = (low + high) >> 1;
+          if (slides[middle].t0 <= seconds) {
+            found = middle;
+            low = middle + 1;
+          } else {
+            high = middle - 1;
+          }
+        }
+        return found;
+      }
+
+      function stopAuto() {
+        if (autoTimer !== null) {
+          clearInterval(autoTimer);
+          autoTimer = null;
+        }
+      }
+
+      function startAuto() {
+        if (!timed || autoPlaying()) return;
+        autoOriginSec = slides[currentIndex].t0;
+        autoOriginMs = performance.now();
+        autoTimer = setInterval(() => {
+          const seconds = lectureSeconds();
+          const last = slides[slides.length - 1];
+          if (seconds >= last.t1) {
+            stopAuto();
+            renderSlide(slides.length - 1);
+            return;
+          }
+          const index = indexAt(seconds);
+          if (index !== currentIndex) renderSlide(index);
+        }, TICK_MS);
+        renderSlide(currentIndex);
+      }
+
+      function toggleAuto() {
+        if (autoPlaying()) {
+          stopAuto();
+          renderSlide(currentIndex);
+        } else {
+          startAuto();
+        }
+      }
+
+      // 손으로 넘겼을 때 시계를 그 자리로 옮긴다.
+      function syncAutoClock() {
+        if (!autoPlaying()) return;
+        autoOriginSec = slides[currentIndex].t0;
+        autoOriginMs = performance.now();
       }
 
       // 키보드 조작 (방향키, 스페이스바)
@@ -534,6 +618,10 @@
         } else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'ArrowUp') {
           e.preventDefault();
           prevSlide();
+        } else if (e.key === 'p' || e.key === 'P' || e.key === 'ㅔ') {
+          // 자동 넘김 켜고 끄기. 시각이 없는 회차에서는 아무 일도 일어나지 않는다.
+          e.preventDefault();
+          toggleAuto();
         }
       });
 
